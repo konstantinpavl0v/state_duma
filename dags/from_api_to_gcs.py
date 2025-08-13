@@ -2,7 +2,7 @@ import json
 import requests
 
 from airflow import DAG
-from airflow.sdk import Connection
+from airflow.sdk import Connection, Variable
 from airflow.providers.standard.operators.empty import EmptyOperator
 from airflow.providers.standard.operators.python import PythonOperator
 from airflow.sdk import Variable
@@ -14,10 +14,12 @@ API_KEY = Variable.get("state_duma_api_key")
 APP_KEY = Variable.get("state_duma_app_key")
 
 GCS_CONNECTION = "google_cloud_default"
+GCS_PROJECT = Variable.get("state_duma_gcs_project")
+GCS_BUCKET = Variable.get("state_duma_gcs_bucket")
+
 
 def get_dates(**context) -> tuple[str, str]:
-
-    start_date = (context["data_interval_start"] - pendulum.duration(days=1)).strftime("%Y-%m-%d")
+    start_date = context["data_interval_start"].strftime("%Y-%m-%d")
     end_date = context["data_interval_end"].strftime("%Y-%m-%d")
 
     return start_date, end_date
@@ -25,7 +27,6 @@ def get_dates(**context) -> tuple[str, str]:
 
 def _get_save_questions(**context):
     start_date, end_date = get_dates(**context)
-    print(f"DEBUG: dateFrom={start_date}, dateTo={end_date}")
 
     hook = GCSHook(gcp_conn_id=GCS_CONNECTION)
 
@@ -46,22 +47,26 @@ def _get_save_questions(**context):
         if not response["questions"]:
             break
 
-        hook.upload(bucket_name="state_duma",
+        # upload every page as a separate file to the gcs
+        hook.upload(bucket_name=GCS_BUCKET,
                     object_name=f"{start_date}_{end_date}_{page_number}.json",
                     data=json.dumps(response),
-                    user_project="scenic-vim-468710-t3",
+                    user_project=GCS_PROJECT,
                     mime_type="application/json")
 
         page_number += 1
 
+
 with DAG(
         dag_id="from_api_to_gcs",
-        start_date=pendulum.datetime(2025,6,8,1),
-        end_date=pendulum.datetime(2025,6,10,1),
+        start_date=pendulum.datetime(2025, 6, 8, 1),
+        end_date=pendulum.datetime(2025, 6, 10, 1),
         schedule="@daily",
-        catchup=True
+        catchup=True,
+        max_active_tasks=1,
+        max_active_runs=1,
+        tags=["gcs", "bq"]
 ) as dag:
-
     start = EmptyOperator(
         task_id="start",
     )
