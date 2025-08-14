@@ -332,5 +332,21 @@ services:
       airflow-init:
         condition: service_completed_successfully
 
+  postgres_oltp:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: postgres_oltp
+      POSTGRES_PASSWORD: postgres_oltp
+      POSTGRES_DB: postgres_oltp
+    volumes:
+      - postgres-db-oltp-volume:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-U", "airflow" ]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+    restart: always
+
 volumes:
   postgres-db-volume:
+  postgres-db-oltp-volume:
